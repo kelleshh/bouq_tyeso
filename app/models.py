@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, List, Literal
-from pydantic import BaseModel, Field, field_validator
+
+from pydantic import BaseModel, Field, RootModel, field_validator
 
 
 class AlertModel(BaseModel):
@@ -11,9 +12,9 @@ class AlertModel(BaseModel):
     days: int = Field(..., description="Days until depletion", ge=0)
 
 
-class AlertsPayload(BaseModel):
+class AlertsPayload(RootModel[List[AlertModel]]):
     """
-    Root-модель: __root__ - список AlertModel.
+    Root-модель: список AlertModel.
     На вход ждём массив массивов, типа:
     [
       ["Tyeso","WB","СКЛАД_1","ART123",3],
@@ -21,9 +22,7 @@ class AlertsPayload(BaseModel):
     ]
     """
 
-    __root__: List[AlertModel]
-
-    @field_validator("__root__", mode="before")
+    @field_validator("root", mode="before")
     @classmethod
     def from_nested_list(cls, value: Any):
         if value == []:
