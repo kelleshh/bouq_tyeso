@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from .config import Settings
 from .models import AlertsPayload
+from text_split import split_text_for_telegram
 
 
 @dataclass
@@ -85,7 +86,7 @@ def _format_alert_line(alert: Alert) -> str:
             f"осталось на {alert.days} дней"
         )
 
-
+# deprecated ???
 def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     """
     Собираем итоговый текст для одного магазина.
@@ -129,7 +130,8 @@ async def send_grouped_alerts_to_telegram(
     alerts: List[Alert],
 ) -> List[Tuple[str, int]]:
     """
-    Рассылает сообщения по магазинам.
+    Рассылает сообщения по магазинам и маркетплейсам.
+    Если текст слишком длинный, режем на несколько сообщений.
     Возвращает список (shop, message_id) для отладки.
     """
     grouped = group_alerts_by_shop_and_marketplace(alerts)
@@ -138,15 +140,40 @@ async def send_grouped_alerts_to_telegram(
     for shop, mp_map in grouped.items():
         chat_id = settings.chat_map.get(shop)
         if chat_id is None:
-            # Конфигурация сломана, это уже ошибка разработчика
             raise RuntimeError(f"No chat id configured for shop '{shop}'")
 
-        text = build_message_for_shop(shop, mp_map)
-        if not text.strip():
-            # Нечего слать
-            continue
+        # фиксированный порядок маркетплейсов
+        marketplace_order = ["WB", "Ozon", "Ozon (Кластеры)"]
+        extra_mps = sorted(set(mp_map.keys()) - set(marketplace_order))
+        marketplace_order.extend(extra_mps)
 
-        msg = await bot.send_message(chat_id, text)
-        sent.append((shop, msg.message_id))
+        for mp in marketplace_order:
+            mp_alerts = mp_map.get(mp, [])
+            if not mp_alerts:
+                continue
+
+            display_name = _marketplace_display_name(mp)
+
+            # сортируем для красоты
+            mp_alerts_sorted = sorted(mp_alerts, key=lambda a: (a.days, a.article))
+
+            # строим текст только для одного маркетплейса
+            lines: list[str] = []
+            lines.append(f'МАГАЗИН "{shop}"')
+            lines.append("")
+            lines.append(f"{display_name}:")
+            for alert in mp_alerts_sorted:
+                lines.append(_format_alert_line(alert))
+
+            text = "\n".join(lines)
+            if not text.strip():
+                continue
+
+            # если слишком длинно – режем
+            chunks = split_text_for_telegram(text)
+            for chunk in chunks:
+                msg = await bot.send_message(chat_id, chunk)
+                sent.append((shop, msg.message_id))
 
     return sent
+
