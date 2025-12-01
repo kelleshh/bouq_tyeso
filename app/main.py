@@ -5,6 +5,8 @@ from typing import Any, Dict
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+
 
 from .config import settings
 from .alerts_service import validate_and_parse_payload, send_grouped_alerts_to_telegram
@@ -14,12 +16,16 @@ from pydantic import ValidationError
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # инициализируем бота один раз на всё приложение
-    bot = Bot(token=settings.bot_token, parse_mode="HTML")
+    bot = Bot(
+        token=settings.bot_token,
+        default=DefaultBotProperties(parse_mode="HTML"),
+    )
     app.state.bot = bot
     try:
         yield
     finally:
         await bot.session.close()
+
 
 
 app = FastAPI(title="Уведомлятор", lifespan=lifespan)
