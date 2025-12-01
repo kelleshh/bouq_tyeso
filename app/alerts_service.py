@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from .config import Settings
 from .models import AlertsPayload
-from text_split import split_text_for_telegram
+from .text_split import split_text_for_telegram
 
 
 @dataclass
