@@ -31,7 +31,7 @@ def validate_and_parse_payload(payload: Any) -> List[Alert]:
         raise
 
     alerts: List[Alert] = []
-    for item in parsed.__root__:
+    for item in parsed.root:
         alerts.append(
             Alert(
                 shop=item.shop,
