@@ -46,6 +46,14 @@ async def receive_alerts(
     request: Request,
     bot: Bot = Depends(get_bot),
 ):
+    
+        # LOG RAW BODY
+    body = await request.body()
+    print("=== RAW ALERTS PAYLOAD ===")
+    print(body.decode('utf-8'))
+    print("=== END PAYLOAD ===")
+
+    
     # 1. Проверяем shared secret
     token = request.headers.get("X-Alerts-Token")
     if token != settings.alerts_token:
