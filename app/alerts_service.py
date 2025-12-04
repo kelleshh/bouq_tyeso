@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Iterable, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from aiogram import Bot
 from pydantic import ValidationError
@@ -22,13 +22,13 @@ class Alert:
 
 def validate_and_parse_payload(payload: Any) -> List[Alert]:
     """
-    Завалидационим вход через Pydantic AlertsPayload
-    и конвертнём в Alert.
+    Валидация входа через Pydantic AlertsPayload
+    и конвертация в список Alert.
     """
     try:
         parsed = AlertsPayload.model_validate(payload)
     except ValidationError:
-        # пробрасываем дальше, пусть FastAPI уже превращает в 400
+        # пусть FastAPI уже превратит это в 400
         raise
 
     alerts: List[Alert] = []
@@ -45,7 +45,6 @@ def validate_and_parse_payload(payload: Any) -> List[Alert]:
     return alerts
 
 
-
 def group_alerts_by_shop_and_marketplace(
     alerts: Iterable[Alert],
 ) -> Dict[str, Dict[str, List[Alert]]]:
@@ -55,7 +54,7 @@ def group_alerts_by_shop_and_marketplace(
       "Tyeso": {
          "WB": [Alert, ...],
          "Ozon": [...],
-         ...
+         "Ozon (Кластеры)": [...],
       },
       "Bouq": { ... }
     }
@@ -68,54 +67,91 @@ def group_alerts_by_shop_and_marketplace(
     return result
 
 
-def _marketplace_display_name(mp: str) -> str:
+def _days_word_ru(n: int) -> str:
+    """
+    Морфология для 'день/дня/дней'.
+    """
+    n_abs = abs(n)
+    last_two = n_abs % 100
+    last = n_abs % 10
+
+    if 11 <= last_two <= 14:
+        return "дней"
+    if last == 1:
+        return "день"
+    if last in (2, 3, 4):
+        return "дня"
+    return "дней"
+
+
+def _marketplace_block_title(mp: str) -> str:
+    """
+    Заголовок блока для маркетплейса.
+    """
+    if mp == "Ozon":
+        return "Остатки Ozon (склады):"
+    if mp == "Ozon (Кластеры)":
+        return "Остатки Ozon (кластеры):"
     if mp == "WB":
-        return "ВБ"
-    return mp
+        return "Остатки ВБ (склады):"
+    return f"Остатки {mp}:"
 
 
-def _format_alert_line(alert: Alert) -> str:
-    if alert.marketplace == "Ozon (Кластеры)":
-        return (
-            f"товара {alert.article} в кластере {alert.location} "
-            f"осталось на {alert.days} дней"
-        )
-    else:
-        return (
-            f"товара {alert.article} на складе {alert.location} "
-            f"осталось на {alert.days} дней"
-        )
-
-# deprecated ???
 def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     """
-    Собираем итоговый текст для одного магазина.
+    Собираем итоговый текст для одного магазина в виде:
+
+    МАГАЗИН "Tyeso"
+
+    Остатки Ozon (склады/кластеры):
+    ❗️<b>VacuumCupMilk</b>
+    СОФЬИНО <b>0 дней</b>
+    ГРИВНО <b>5 дней</b>
+    ...
     """
 
     lines: List[str] = []
     lines.append(f'МАГАЗИН "{shop}"')
     lines.append("")
 
-    # Фиксированный порядок, чтобы не прыгало
+    # Фиксированный порядок маркетплейсов
     marketplace_order = ["WB", "Ozon", "Ozon (Кластеры)"]
-    # добавляем неожиданное, если вдруг появится
-    for mp in sorted(set(mp_map.keys()) - set(marketplace_order)):
-        marketplace_order.append(mp)
+    extra_mps = sorted(set(mp_map.keys()) - set(marketplace_order))
+    marketplace_order.extend(extra_mps)
 
     for mp in marketplace_order:
-        alerts = mp_map.get(mp, [])
-        if not alerts:
-            # Если хочешь вообще не писать маркетплейсы без проблем - можно пропустить этот блок
+        mp_alerts = mp_map.get(mp, [])
+        if not mp_alerts:
             continue
 
-        display_name = _marketplace_display_name(mp)
-        lines.append(f"{display_name}:")
-        # сортируем по дням, потом по артикулу чисто для красоты
-        alerts_sorted = sorted(alerts, key=lambda a: (a.days, a.article))
+        # заголовок блока маркетплейса
+        lines.append(_marketplace_block_title(mp))
 
-        for alert in alerts_sorted:
-            lines.append(_format_alert_line(alert))
-        lines.append("")  # пустая строка между разделами
+        # сортируем и группируем по артикулу
+        mp_alerts_sorted = sorted(
+            mp_alerts,
+            key=lambda a: (a.article, a.location, a.days),
+        )
+        article_map: Dict[str, List[Alert]] = {}
+        for alert in mp_alerts_sorted:
+            article_map.setdefault(alert.article, []).append(alert)
+
+        # проходим по артикулам в алфавитном порядке
+        for article in sorted(article_map.keys()):
+            article_alerts = article_map[article]
+
+            # строка с артикулом
+            lines.append(f'❗️<b>{article}</b>')
+
+            # склады/кластеры по возрастанию дней, потом по названию
+            for alert in sorted(article_alerts, key=lambda a: (a.days, a.location)):
+                location_caps = alert.location.upper()
+                word = _days_word_ru(alert.days)
+                lines.append(f"{location_caps} <b>{alert.days} {word}</b>")
+
+            lines.append("")  # пустая строка между артикулами
+
+        lines.append("")  # пустая строка между маркетплейсами
 
     # убираем возможный лишний \n в конце
     while lines and lines[-1] == "":
@@ -130,9 +166,9 @@ async def send_grouped_alerts_to_telegram(
     alerts: List[Alert],
 ) -> List[Tuple[str, int]]:
     """
-    Рассылает сообщения по магазинам и маркетплейсам.
-    Если текст слишком длинный, режем на несколько сообщений.
-    Возвращает список (shop, message_id) для отладки.
+    Рассылает сообщения по магазинам.
+    Для каждого shop формируем один большой текст (по всем маркетплейсам)
+    и при необходимости режем его на части под лимит Telegram.
     """
     grouped = group_alerts_by_shop_and_marketplace(alerts)
     sent: List[Tuple[str, int]] = []
@@ -142,38 +178,13 @@ async def send_grouped_alerts_to_telegram(
         if chat_id is None:
             raise RuntimeError(f"No chat id configured for shop '{shop}'")
 
-        # фиксированный порядок маркетплейсов
-        marketplace_order = ["WB", "Ozon", "Ozon (Кластеры)"]
-        extra_mps = sorted(set(mp_map.keys()) - set(marketplace_order))
-        marketplace_order.extend(extra_mps)
+        text = build_message_for_shop(shop, mp_map)
+        if not text.strip():
+            continue
 
-        for mp in marketplace_order:
-            mp_alerts = mp_map.get(mp, [])
-            if not mp_alerts:
-                continue
-
-            display_name = _marketplace_display_name(mp)
-
-            # сортируем для красоты
-            mp_alerts_sorted = sorted(mp_alerts, key=lambda a: (a.days, a.article))
-
-            # строим текст только для одного маркетплейса
-            lines: list[str] = []
-            lines.append(f'МАГАЗИН "{shop}"')
-            lines.append("")
-            lines.append(f"{display_name}:")
-            for alert in mp_alerts_sorted:
-                lines.append(_format_alert_line(alert))
-
-            text = "\n".join(lines)
-            if not text.strip():
-                continue
-
-            # если слишком длинно – режем
-            chunks = split_text_for_telegram(text)
-            for chunk in chunks:
-                msg = await bot.send_message(chat_id, chunk)
-                sent.append((shop, msg.message_id))
+        chunks = split_text_for_telegram(text)
+        for chunk in chunks:
+            msg = await bot.send_message(chat_id, chunk)
+            sent.append((shop, msg.message_id))
 
     return sent
-
