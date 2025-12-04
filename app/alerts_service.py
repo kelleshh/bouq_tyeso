@@ -89,11 +89,11 @@ def _marketplace_block_title(mp: str) -> str:
     Заголовок блока для маркетплейса.
     """
     if mp == "Ozon":
-        return "Остатки Ozon (склады):"
+        return "Остатки Ozon (склады):\n"
     if mp == "Ozon (Кластеры)":
-        return "Остатки Ozon (кластеры):"
+        return "Остатки Ozon (кластеры):\n"
     if mp == "WB":
-        return "Остатки ВБ (склады):"
+        return "Остатки ВБ (склады):\n"
     return f"Остатки {mp}:"
 
 
@@ -104,6 +104,7 @@ def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     МАГАЗИН "Tyeso"
 
     Остатки Ozon (склады/кластеры):
+
     ❗️<b>VacuumCupMilk</b>
     СОФЬИНО <b>0 дней</b>
     ГРИВНО <b>5 дней</b>
