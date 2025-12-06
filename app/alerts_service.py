@@ -22,8 +22,13 @@ class Alert:
 
 def validate_and_parse_payload(payload: Any) -> List[Alert]:
     """
+<<<<<<< HEAD
     Валидация входа через Pydantic AlertsPayload
     и конвертация в список Alert.
+=======
+    Валидируем вход через Pydantic AlertsPayload
+    и конвертируем в список Alert.
+>>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
     """
     try:
         parsed = AlertsPayload.model_validate(payload)
@@ -97,6 +102,7 @@ def _marketplace_block_title(mp: str) -> str:
     return f"Остатки {mp}:"
 
 
+<<<<<<< HEAD
 def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     """
     Собираем итоговый текст для одного магазина в виде:
@@ -109,12 +115,57 @@ def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     СОФЬИНО <b>0 дней</b>
     ГРИВНО <b>5 дней</b>
     ...
+=======
+def _plural_days_ru(n: int) -> str:
     """
+    Склонение "день/дня/дней".
+    """
+    n_abs = abs(n) % 100
+    n1 = n_abs % 10
+    if 11 <= n_abs <= 14:
+        return "дней"
+    if n1 == 1:
+        return "день"
+    if 2 <= n1 <= 4:
+        return "дня"
+    return "дней"
+
+
+def _format_alert_line(alert: Alert) -> str:
+    """
+    Одна строка с остатком.
+    """
+    days_word = _plural_days_ru(alert.days)
+
+    if alert.marketplace == "Ozon (Кластеры)":
+        return (
+            f"товара {alert.article} в кластере {alert.location} "
+            f"осталось на {alert.days} {days_word}"
+        )
+    else:
+        return (
+            f"товара {alert.article} на складе {alert.location} "
+            f"осталось на {alert.days} {days_word}"
+        )
+
+
+def _build_message_for_shop_and_marketplace(
+    shop: str,
+    marketplace: str,
+    alerts: List[Alert],
+) -> str:
+    """
+    Собираем текст для одного магазина и одного маркетплейса.
+>>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
+    """
+    if not alerts:
+        return ""
 
     lines: List[str] = []
     lines.append(f'МАГАЗИН "{shop}"')
     lines.append("")
 
+<<<<<<< HEAD
     # Фиксированный порядок маркетплейсов
     marketplace_order = ["WB", "Ozon", "Ozon (Кластеры)"]
     extra_mps = sorted(set(mp_map.keys()) - set(marketplace_order))
@@ -157,6 +208,16 @@ def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
     # убираем возможный лишний \n в конце
     while lines and lines[-1] == "":
         lines.pop()
+=======
+    display_name = _marketplace_display_name(marketplace)
+    lines.append(f"{display_name}:")  # например, "ВБ:" или "Ozon:" и т.п.
+
+    # сортируем по дням, потом по артикулу, чтобы не было хаоса
+    alerts_sorted = sorted(alerts, key=lambda a: (a.days, a.article))
+
+    for alert in alerts_sorted:
+        lines.append(_format_alert_line(alert))
+>>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
 
     return "\n".join(lines)
 
@@ -167,9 +228,16 @@ async def send_grouped_alerts_to_telegram(
     alerts: List[Alert],
 ) -> List[Tuple[str, int]]:
     """
+<<<<<<< HEAD
     Рассылает сообщения по магазинам.
     Для каждого shop формируем один большой текст (по всем маркетплейсам)
     и при необходимости режем его на части под лимит Telegram.
+=======
+    Рассылает сообщения по магазинам и маркетплейсам.
+    ВАЖНО: для каждого (shop, marketplace) формируется ОТДЕЛЬНОЕ сообщение.
+    Если оно слишком длинное, режем его на несколько кусков, чтобы Телега не упала.
+    Возвращает список (shop, message_id) для отладки.
+>>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
     """
     grouped = group_alerts_by_shop_and_marketplace(alerts)
     sent: List[Tuple[str, int]] = []
@@ -177,8 +245,10 @@ async def send_grouped_alerts_to_telegram(
     for shop, mp_map in grouped.items():
         chat_id = settings.chat_map.get(shop)
         if chat_id is None:
+            # Конфигурация сломана, это уже ошибка разработчика
             raise RuntimeError(f"No chat id configured for shop '{shop}'")
 
+<<<<<<< HEAD
         text = build_message_for_shop(shop, mp_map)
         if not text.strip():
             continue
@@ -187,5 +257,27 @@ async def send_grouped_alerts_to_telegram(
         for chunk in chunks:
             msg = await bot.send_message(chat_id, chunk)
             sent.append((shop, msg.message_id))
+=======
+        # фиксированный порядок маркетов, затем любые неожиданные
+        base_order = ["WB", "Ozon", "Ozon (Кластеры)"]
+        extra_mps = sorted(set(mp_map.keys()) - set(base_order))
+        marketplace_order = [mp for mp in base_order if mp in mp_map]
+        marketplace_order.extend(extra_mps)
+
+        for mp in marketplace_order:
+            mp_alerts = mp_map.get(mp, [])
+            if not mp_alerts:
+                continue
+
+            text = _build_message_for_shop_and_marketplace(shop, mp, mp_alerts)
+            if not text.strip():
+                continue
+
+            # если слишком длинно – режем, но В РАМКАХ одного маркетплейса
+            chunks = split_text_for_telegram(text)
+            for chunk in chunks:
+                msg = await bot.send_message(chat_id, chunk)
+                sent.append((shop, msg.message_id))
+>>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
 
     return sent
