@@ -67,10 +67,17 @@ def group_alerts_by_shop_and_marketplace(
     return result
 
 
-def _marketplace_display_name(mp: str) -> str:
+def _marketplace_block_title(mp: str) -> str:
+    """
+    Заголовок блока для маркетплейса.
+    """
+    if mp == "Ozon":
+        return "Остатки Ozon (склады):"
+    if mp == "Ozon (Кластеры)":
+        return "Остатки Ozon (кластеры):"
     if mp == "WB":
-        return "ВБ"
-    return mp
+        return "Остатки ВБ (склады):"
+    return f"Остатки {mp}:"
 
 
 def _plural_days_ru(n: int) -> str:
@@ -88,22 +95,14 @@ def _plural_days_ru(n: int) -> str:
     return "дней"
 
 
-def _format_alert_line(alert: Alert) -> str:
+def _group_by_article(alerts: List[Alert]) -> Dict[str, List[Alert]]:
     """
-    Одна строка с остатком.
+    {"VacuumCupMilk": [Alert, ...], ...}
     """
-    days_word = _plural_days_ru(alert.days)
-
-    if alert.marketplace == "Ozon (Кластеры)":
-        return (
-            f"товара {alert.article} в кластере {alert.location} "
-            f"осталось на {alert.days} {days_word}"
-        )
-    else:
-        return (
-            f"товара {alert.article} на складе {alert.location} "
-            f"осталось на {alert.days} {days_word}"
-        )
+    result: Dict[str, List[Alert]] = {}
+    for alert in alerts:
+        result.setdefault(alert.article, []).append(alert)
+    return result
 
 
 def _build_message_for_shop_and_marketplace(
@@ -113,7 +112,16 @@ def _build_message_for_shop_and_marketplace(
 ) -> str:
     """
     Собираем текст ТОЛЬКО для одного магазина и одного маркетплейса.
-    Это и есть "одно сообщение на WB / Ozon / Ozon (Кластеры)".
+
+    Формат:
+
+    МАГАЗИН "Tyeso"
+
+    Остатки Ozon (склады/кластеры):
+    ❗️<b>VacuumCupMilk</b>
+    СОФЬИНО <b>0 дней</b>
+    ГРИВНО <b>5 дней</b>
+    ...
     """
     if not alerts:
         return ""
@@ -122,14 +130,33 @@ def _build_message_for_shop_and_marketplace(
     lines.append(f'МАГАЗИН "{shop}"')
     lines.append("")
 
-    display_name = _marketplace_display_name(marketplace)
-    lines.append(f"{display_name}:")  # например, "ВБ:" или "Ozon:" и т.п.
+    header = _marketplace_block_title(marketplace)
+    lines.append(header)
+    lines.append("")
 
-    # сортируем по дням, потом по артикулу, чтобы не было хаоса
-    alerts_sorted = sorted(alerts, key=lambda a: (a.days, a.article))
+    # группируем по артикулу
+    by_article = _group_by_article(alerts)
+    # фиксированный порядок артикулов: по имени
+    for article in sorted(by_article.keys()):
+        article_alerts = by_article[article]
+        # сортируем по дням, потом по локации
+        article_alerts_sorted = sorted(
+            article_alerts, key=lambda a: (a.days, a.location)
+        )
 
-    for alert in alerts_sorted:
-        lines.append(_format_alert_line(alert))
+        # заголовок артикула
+        lines.append(f'❗️<b>{article}</b>')
+        # строки по складам / кластерам
+        for alert in article_alerts_sorted:
+            loc = str(alert.location).upper()
+            days_word = _plural_days_ru(alert.days)
+            lines.append(f"{loc} <b>{alert.days} {days_word}</b>")
+
+        lines.append("")  # пустая строка между артикулами
+
+    # убираем лишнюю пустую строку в конце, если есть
+    while lines and lines[-1] == "":
+        lines.pop()
 
     return "\n".join(lines)
 
@@ -141,8 +168,9 @@ async def send_grouped_alerts_to_telegram(
 ) -> List[Tuple[str, int]]:
     """
     Рассылает сообщения по магазинам и маркетплейсам.
-    ВАЖНО: для каждого (shop, marketplace) формируется ОТДЕЛЬНОЕ сообщение.
-    Если оно слишком длинное, режем его на несколько кусков, чтобы Телега не упала.
+    Для каждого (shop, marketplace) формируется ОТДЕЛЬНОЕ сообщение
+    в нужном формате. Если оно слишком длинное, режем его на несколько
+    кусков, чтобы Телега не упала.
     Возвращает список (shop, message_id) для отладки.
     """
     grouped = group_alerts_by_shop_and_marketplace(alerts)
