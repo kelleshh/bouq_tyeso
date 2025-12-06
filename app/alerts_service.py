@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Iterable, Tuple
 
 from aiogram import Bot
 from pydantic import ValidationError
@@ -22,18 +22,13 @@ class Alert:
 
 def validate_and_parse_payload(payload: Any) -> List[Alert]:
     """
-<<<<<<< HEAD
-    Валидация входа через Pydantic AlertsPayload
-    и конвертация в список Alert.
-=======
     Валидируем вход через Pydantic AlertsPayload
     и конвертируем в список Alert.
->>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
     """
     try:
         parsed = AlertsPayload.model_validate(payload)
     except ValidationError:
-        # пусть FastAPI уже превратит это в 400
+        # пробрасываем дальше, пусть FastAPI уже превращает в 400
         raise
 
     alerts: List[Alert] = []
@@ -59,7 +54,7 @@ def group_alerts_by_shop_and_marketplace(
       "Tyeso": {
          "WB": [Alert, ...],
          "Ozon": [...],
-         "Ozon (Кластеры)": [...],
+         ...
       },
       "Bouq": { ... }
     }
@@ -72,50 +67,12 @@ def group_alerts_by_shop_and_marketplace(
     return result
 
 
-def _days_word_ru(n: int) -> str:
-    """
-    Морфология для 'день/дня/дней'.
-    """
-    n_abs = abs(n)
-    last_two = n_abs % 100
-    last = n_abs % 10
-
-    if 11 <= last_two <= 14:
-        return "дней"
-    if last == 1:
-        return "день"
-    if last in (2, 3, 4):
-        return "дня"
-    return "дней"
-
-
-def _marketplace_block_title(mp: str) -> str:
-    """
-    Заголовок блока для маркетплейса.
-    """
-    if mp == "Ozon":
-        return "Остатки Ozon (склады):\n"
-    if mp == "Ozon (Кластеры)":
-        return "Остатки Ozon (кластеры):\n"
+def _marketplace_display_name(mp: str) -> str:
     if mp == "WB":
-        return "Остатки ВБ (склады):\n"
-    return f"Остатки {mp}:"
+        return "ВБ"
+    return mp
 
 
-<<<<<<< HEAD
-def build_message_for_shop(shop: str, mp_map: Dict[str, List[Alert]]) -> str:
-    """
-    Собираем итоговый текст для одного магазина в виде:
-
-    МАГАЗИН "Tyeso"
-
-    Остатки Ozon (склады/кластеры):
-
-    ❗️<b>VacuumCupMilk</b>
-    СОФЬИНО <b>0 дней</b>
-    ГРИВНО <b>5 дней</b>
-    ...
-=======
 def _plural_days_ru(n: int) -> str:
     """
     Склонение "день/дня/дней".
@@ -155,8 +112,8 @@ def _build_message_for_shop_and_marketplace(
     alerts: List[Alert],
 ) -> str:
     """
-    Собираем текст для одного магазина и одного маркетплейса.
->>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
+    Собираем текст ТОЛЬКО для одного магазина и одного маркетплейса.
+    Это и есть "одно сообщение на WB / Ozon / Ozon (Кластеры)".
     """
     if not alerts:
         return ""
@@ -165,50 +122,6 @@ def _build_message_for_shop_and_marketplace(
     lines.append(f'МАГАЗИН "{shop}"')
     lines.append("")
 
-<<<<<<< HEAD
-    # Фиксированный порядок маркетплейсов
-    marketplace_order = ["WB", "Ozon", "Ozon (Кластеры)"]
-    extra_mps = sorted(set(mp_map.keys()) - set(marketplace_order))
-    marketplace_order.extend(extra_mps)
-
-    for mp in marketplace_order:
-        mp_alerts = mp_map.get(mp, [])
-        if not mp_alerts:
-            continue
-
-        # заголовок блока маркетплейса
-        lines.append(_marketplace_block_title(mp))
-
-        # сортируем и группируем по артикулу
-        mp_alerts_sorted = sorted(
-            mp_alerts,
-            key=lambda a: (a.article, a.location, a.days),
-        )
-        article_map: Dict[str, List[Alert]] = {}
-        for alert in mp_alerts_sorted:
-            article_map.setdefault(alert.article, []).append(alert)
-
-        # проходим по артикулам в алфавитном порядке
-        for article in sorted(article_map.keys()):
-            article_alerts = article_map[article]
-
-            # строка с артикулом
-            lines.append(f'❗️<b>{article}</b>')
-
-            # склады/кластеры по возрастанию дней, потом по названию
-            for alert in sorted(article_alerts, key=lambda a: (a.days, a.location)):
-                location_caps = alert.location.upper()
-                word = _days_word_ru(alert.days)
-                lines.append(f"{location_caps} <b>{alert.days} {word}</b>")
-
-            lines.append("")  # пустая строка между артикулами
-
-        lines.append("")  # пустая строка между маркетплейсами
-
-    # убираем возможный лишний \n в конце
-    while lines and lines[-1] == "":
-        lines.pop()
-=======
     display_name = _marketplace_display_name(marketplace)
     lines.append(f"{display_name}:")  # например, "ВБ:" или "Ozon:" и т.п.
 
@@ -217,7 +130,6 @@ def _build_message_for_shop_and_marketplace(
 
     for alert in alerts_sorted:
         lines.append(_format_alert_line(alert))
->>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
 
     return "\n".join(lines)
 
@@ -228,16 +140,10 @@ async def send_grouped_alerts_to_telegram(
     alerts: List[Alert],
 ) -> List[Tuple[str, int]]:
     """
-<<<<<<< HEAD
-    Рассылает сообщения по магазинам.
-    Для каждого shop формируем один большой текст (по всем маркетплейсам)
-    и при необходимости режем его на части под лимит Telegram.
-=======
     Рассылает сообщения по магазинам и маркетплейсам.
     ВАЖНО: для каждого (shop, marketplace) формируется ОТДЕЛЬНОЕ сообщение.
     Если оно слишком длинное, режем его на несколько кусков, чтобы Телега не упала.
     Возвращает список (shop, message_id) для отладки.
->>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
     """
     grouped = group_alerts_by_shop_and_marketplace(alerts)
     sent: List[Tuple[str, int]] = []
@@ -248,16 +154,6 @@ async def send_grouped_alerts_to_telegram(
             # Конфигурация сломана, это уже ошибка разработчика
             raise RuntimeError(f"No chat id configured for shop '{shop}'")
 
-<<<<<<< HEAD
-        text = build_message_for_shop(shop, mp_map)
-        if not text.strip():
-            continue
-
-        chunks = split_text_for_telegram(text)
-        for chunk in chunks:
-            msg = await bot.send_message(chat_id, chunk)
-            sent.append((shop, msg.message_id))
-=======
         # фиксированный порядок маркетов, затем любые неожиданные
         base_order = ["WB", "Ozon", "Ozon (Кластеры)"]
         extra_mps = sorted(set(mp_map.keys()) - set(base_order))
@@ -278,6 +174,5 @@ async def send_grouped_alerts_to_telegram(
             for chunk in chunks:
                 msg = await bot.send_message(chat_id, chunk)
                 sent.append((shop, msg.message_id))
->>>>>>> ae9b6ce (refactor(alerts): send per-marketplace reports and improve Russian day pluralization)
 
     return sent
