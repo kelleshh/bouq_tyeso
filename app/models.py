@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, RootModel, field_validator
 
 
 class AlertModel(BaseModel):
-    shop: Literal["Tyeso", "Bouq"]
+    shop: Literal["Tyeso", "BOUQ"]
     marketplace: Literal["WB", "Ozon", "Ozon (Кластеры)"]
     location: str
     article: str
