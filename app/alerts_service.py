@@ -13,7 +13,7 @@ from .text_split import split_text_for_telegram
 
 @dataclass
 class Alert:
-    shop: str               # "Tyeso" или "Bouq"
+    shop: str               # "Tyeso" или "BOUQ"
     marketplace: str        # "WB", "Ozon", "Ozon (Кластеры)"
     location: str           # склад или кластер
     article: str            # артикул
@@ -56,7 +56,7 @@ def group_alerts_by_shop_and_marketplace(
          "Ozon": [...],
          ...
       },
-      "Bouq": { ... }
+      "BOUQ": { ... }
     }
     """
     result: Dict[str, Dict[str, List[Alert]]] = {}

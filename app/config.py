@@ -13,7 +13,7 @@ class Settings:
     def chat_map(self) -> dict[str, int]:
         return {
             "Tyeso": self.tyeso_chat_id,
-            "Bouq": self.bouq_chat_id,
+            "BOUQ": self.bouq_chat_id,
         }
 
 
