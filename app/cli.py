@@ -10,6 +10,12 @@ import typer
 
 app = typer.Typer(add_completion=False)
 
+@app.callback()
+def main() -> None:
+    """MP alerts bot CLI."""
+    return
+
+
 DEFAULT_ENV_PATH = Path.cwd() / ".env"
 KEY_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
 

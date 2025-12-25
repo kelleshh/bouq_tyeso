@@ -2,8 +2,11 @@ services:
   mp-alerts-bot:
     build: .
     container_name: mp-alerts-bot
-    env_file:
-      - .env
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      ALERTS_TOKEN: ${ALERTS_TOKEN:-}
+      TYESO_CHAT_ID: ${TYESO_CHAT_ID:-}
+      BOUQ_CHAT_ID: ${BOUQ_CHAT_ID:-}
     ports:
       - "80:8000"
     restart: unless-stopped
@@ -13,7 +16,8 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-    command: ["bot", "configure"]
+    entrypoint: ["bot"]
+    command: ["configure"]
     stdin_open: true
     tty: true
     restart: "no"

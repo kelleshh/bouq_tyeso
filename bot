@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+  configure|"")
+    shift 2>/dev/null || true
+    exec docker compose run --rm mp-alerts-configure configure "$@"
+    ;;
+  up)
+    exec docker compose up -d mp-alerts-bot
+    ;;
+  *)
+    exec docker compose "$@"
+    ;;
+esac
