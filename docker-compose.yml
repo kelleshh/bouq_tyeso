@@ -1,23 +1,29 @@
 services:
   mp-alerts-bot:
-    build: .
+    image: mp-alerts:latest
+    build:
+      context: .
     container_name: mp-alerts-bot
     environment:
-      BOT_TOKEN: ${BOT_TOKEN:-}
-      ALERTS_TOKEN: ${ALERTS_TOKEN:-}
-      TYESO_CHAT_ID: ${TYESO_CHAT_ID:-}
-      BOUQ_CHAT_ID: ${BOUQ_CHAT_ID:-}
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      ALERTS_TOKEN: ${ALERTS_TOKEN:?set ALERTS_TOKEN}
+      TYESO_CHAT_ID: ${TYESO_CHAT_ID:?set TYESO_CHAT_ID}
+      BOUQ_CHAT_ID: ${BOUQ_CHAT_ID:?set BOUQ_CHAT_ID}
     ports:
       - "80:8000"
     restart: unless-stopped
+    init: true
+    stop_grace_period: 10s
 
   mp-alerts-configure:
-    build: .
+    image: mp-alerts:latest
+    container_name: mp-alerts-configure
     working_dir: /app
     volumes:
       - .:/app
     entrypoint: ["bot"]
     command: ["configure"]
+    user: "${UID:-1000}:${GID:-1000}"
     stdin_open: true
     tty: true
     restart: "no"
